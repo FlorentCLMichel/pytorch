@@ -85,8 +85,10 @@ python test/distributed/test_store.py
 python test/distributed/test_pg_wrapper.py
 
 # Run distributed tests, including tests for Distributed Data Parallel.
-python test/run_test.py --verbose -i distributed/test_distributed_fork
 python test/run_test.py --verbose -i distributed/test_distributed_spawn
+
+# Run a single test in the test_distributed_spawn test suite.
+touch /tmp/barrier && TEMP_DIR="/tmp" BACKEND="nccl" WORLD_SIZE="2" python test/distributed/test_distributed_spawn.py -v TestDistBackendWithSpawn.test_ddp_profiling_torch_profiler
 
 # Run the RPC test suite for the TensorPipeAgent.
 python test/distributed/rpc/test_tensorpipe_agent.py

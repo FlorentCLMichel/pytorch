@@ -12,7 +12,6 @@ except ImportError:
 
 source_files = {'.py', '.cpp', '.h'}
 
-DECLARATIONS_PATH = 'torch/share/ATen/Declarations.yaml'
 NATIVE_FUNCTIONS_PATH = 'aten/src/ATen/native/native_functions.yaml'
 
 # TODO: This is a little inaccurate, because it will also pick
@@ -28,7 +27,6 @@ def all_generator_source() -> List[str]:
 
 
 def generate_code(ninja_global: Optional[str] = None,
-                  declarations_path: Optional[str] = None,
                   nn_path: Optional[str] = None,
                   native_functions_path: Optional[str] = None,
                   install_dir: Optional[str] = None,
@@ -59,7 +57,6 @@ def generate_code(ninja_global: Optional[str] = None,
 
     if subset == "pybindings" or not subset:
         gen_autograd_python(
-            declarations_path or DECLARATIONS_PATH,
             native_functions_path or NATIVE_FUNCTIONS_PATH,
             autograd_gen_dir,
             autograd_dir)
@@ -70,7 +67,6 @@ def generate_code(ninja_global: Optional[str] = None,
     if subset == "libtorch" or not subset:
 
         gen_autograd(
-            declarations_path or DECLARATIONS_PATH,
             native_functions_path or NATIVE_FUNCTIONS_PATH,
             autograd_gen_dir,
             autograd_dir,
@@ -138,7 +134,6 @@ def get_selector(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Autogenerate code')
-    parser.add_argument('--declarations-path')
     parser.add_argument('--native-functions-path')
     parser.add_argument('--nn-path')
     parser.add_argument('--ninja-global')
@@ -167,11 +162,15 @@ def main() -> None:
         help='force it to generate schema-only registrations for ops that are not'
         'listed on --selected-op-list'
     )
+    parser.add_argument(
+        '--gen_lazy_ts_backend',
+        action='store_true',
+        help='Enable generation of the torch::lazy TorchScript backend'
+    )
     options = parser.parse_args()
 
     generate_code(
         options.ninja_global,
-        options.declarations_path,
         options.nn_path,
         options.native_functions_path,
         options.install_dir,
@@ -181,6 +180,28 @@ def main() -> None:
         # options.selected_op_list
         operator_selector=get_selector(options.selected_op_list_path, options.operators_yaml_path),
     )
+
+    if options.gen_lazy_ts_backend:
+        aten_path = os.path.dirname(os.path.dirname(options.native_functions_path))
+        ts_backend_yaml = os.path.join(aten_path, 'native/ts_native_functions.yaml')
+
+        if options.install_dir is None:
+            options.install_dir = "torch/csrc"
+        lazy_install_dir = os.path.join(options.install_dir, "lazy/generated")
+        if not os.path.exists(lazy_install_dir):
+            os.makedirs(lazy_install_dir)
+
+        assert os.path.isfile(ts_backend_yaml), f"Unable to access ts_backend_yaml: {ts_backend_yaml}"
+        from tools.codegen.gen_lazy_tensor import run_gen_lazy_tensor
+        run_gen_lazy_tensor(aten_path=aten_path,
+                            source_yaml=ts_backend_yaml,
+                            output_dir=lazy_install_dir,
+                            dry_run=False,
+                            # TODO(whc) reimplement checking of hand-implemented nativefunc file after landing it
+                            impl_path=None,
+                            gen_ts_lowerings=True,
+                            node_base="TsNode",
+                            node_base_hdr="torch/csrc/lazy/ts_backend/ts_node.h")
 
 
 if __name__ == "__main__":

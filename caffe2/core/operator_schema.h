@@ -6,15 +6,17 @@
 #include <initializer_list>
 #include <ostream>
 #include <set>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
-#include "c10/util/Registry.h"
-#include "caffe2/core/common.h"
-#include "caffe2/core/logging.h"
-#include "caffe2/proto/caffe2_pb.h"
-#include "caffe2/utils/filler.h"
-#include "caffe2/utils/proto_utils.h"
+#include <c10/util/irange.h>
+#include <c10/util/Registry.h>
+#include <caffe2/core/common.h>
+#include <caffe2/core/logging.h>
+#include <caffe2/core/types.h>
+#include <caffe2/proto/caffe2_pb.h>
+#include <caffe2/utils/filler.h>
+#include <caffe2/utils/proto_utils.h>
 
 namespace caffe2 {
 
@@ -273,8 +275,8 @@ class TORCH_API OpSchema {
   OpSchema&
   Arg(const char* name, const char* description, bool required = false);
 
-#define DECLARE_STANDARD_ARG(name, str)     \
-  static const char* Arg_##name; \
+#define DECLARE_STANDARD_ARG(name, str) \
+  static const char* Arg_##name;        \
   OpSchema& Arg##name(const char* description);
 
   DECLARE_STANDARD_ARG(IsTest, is_test)
@@ -339,7 +341,9 @@ class TORCH_API OpSchema {
     return inplace_enforced_(x, y);
   }
 
-  TORCH_API friend std::ostream& operator<<(std::ostream& out, const OpSchema& schema);
+  TORCH_API friend std::ostream& operator<<(
+      std::ostream& out,
+      const OpSchema& schema);
 
   const std::vector<Argument>& args() const {
     return args_;
@@ -460,21 +464,7 @@ class TORCH_API OpSchema {
 class TORCH_API OpSchemaRegistry {
  public:
   static OpSchema&
-  NewSchema(const string& key, const string& file, const int line) {
-    auto& m = map();
-    auto it = m.find(key);
-    if (it != m.end()) {
-      const auto& schema = it->second;
-      std::ios_base::Init init;
-      std::cerr << "Trying to register schema with name " << key
-                << " from file " << file << " line " << line
-                << ", but it is already registered from file " << schema.file()
-                << " line " << schema.line();
-      abort();
-    }
-    m.emplace(key, OpSchema(key, file, line));
-    return m[key];
-  }
+  NewSchema(const string& key, const string& file, const int line);
 
   static const OpSchema* Schema(const string& key) {
     auto& m = map();
@@ -530,7 +520,7 @@ inline uint64_t nElemFromDim(const TensorShape& X, int dim = 0) {
   CAFFE_ENFORCE_GE(dim, 0, "Invalid maximum index specified");
 
   uint64_t nElem = 1;
-  for (int i = dim; i < X.dims_size(); ++i) {
+  for (const auto i : c10::irange(dim, X.dims_size())) {
     nElem *= X.dims(i);
   }
   return nElem;
@@ -542,7 +532,7 @@ inline uint64_t nElemBetweenDim(const TensorShape& X, int start, int stop) {
   CAFFE_ENFORCE_LE(stop, X.dims_size(), "Invalid maximum index specified");
 
   uint64_t nElem = 1;
-  for (int i = start; i < stop; ++i) {
+  for (const auto i : c10::irange(start, stop)) {
     nElem *= X.dims(i);
   }
   return nElem;
@@ -571,13 +561,15 @@ OpSchema::Cost PointwiseCostInference(
   const TensorShape X = inputs[0];
   uint64_t nElemX = nElemFromDim(X);
   uint64_t nElemRead = 0;
-  for (size_t i = 0; i < inputs.size(); ++i) {
+  for (const auto i : c10::irange(inputs.size())) {
     nElemRead += nElemFromDim(inputs[i]);
   }
 
   c.flops = nElemX * OpsPerPoint;
-  c.bytes_read = nElemRead * sizeof(X.data_type());
-  c.bytes_written = nElemX * sizeof(X.data_type());
+  auto const& X_element_size_byte =
+      DataTypeToTypeMeta(X.data_type()).itemsize();
+  c.bytes_read = nElemRead * X_element_size_byte;
+  c.bytes_written = nElemX * X_element_size_byte;
   return c;
 }
 

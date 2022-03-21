@@ -1,10 +1,10 @@
 #include <vector>
 
 #include <ATen/ATen.h>
-
 #include <ATen/nnapi/nnapi_bind.h>
 #include <ATen/nnapi/nnapi_wrapper.h>
 #include <ATen/nnapi/nnapi_model_loader.h>
+#include <c10/util/irange.h>
 
 namespace torch {
 namespace nnapi {
@@ -104,7 +104,7 @@ void NnapiCompilation::run(
   TORCH_CHECK((int32_t)inputs.size() == num_inputs_);
   TORCH_CHECK((int32_t)outputs.size() == num_outputs_);
 
-  for (size_t i = 0; i < inputs.size(); i++) {
+  for (const auto i : c10::irange(inputs.size())) {
     auto& t = inputs[i];
     // TODO: Check contiguous and dtype.
     ANeuralNetworksOperandType op_type;
@@ -118,7 +118,7 @@ void NnapiCompilation::run(
         t.nbytes());
   }
 
-  for (size_t i = 0; i < outputs.size(); i++) {
+  for (const auto i : c10::irange(outputs.size())) {
     auto& t = outputs[i];
     // TODO: Check contiguous and dtype.
     check_nnapi->Execution_setOutput(
@@ -132,7 +132,7 @@ void NnapiCompilation::run(
   check_nnapi->Execution_compute(execution);
 
   // TODO: Maybe skip this for fixed-size outputs?
-  for (size_t i = 0; i < outputs.size(); i++) {
+  for (const auto i : c10::irange(outputs.size())) {
     auto& t = outputs[i];
     // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     uint32_t rank;
@@ -150,7 +150,7 @@ void NnapiCompilation::get_operand_type(const at::Tensor& t, ANeuralNetworksOper
   TORCH_CHECK(operand->dimensionCount == t.dim()); // Check for overflow.
   dims->resize(t.dim());
   operand->dimensions = dims->data();
-  for (size_t i = 0; i < dims->size(); i++) {
+  for (const auto i : c10::irange(dims->size())) {
     (*dims)[i] = t.sizes()[i];
     TORCH_CHECK((*dims)[i] == t.sizes()[i]); // Check for overflow.
   }
@@ -174,35 +174,21 @@ void NnapiCompilation::get_operand_type(const at::Tensor& t, ANeuralNetworksOper
     operand->zeroPoint = 0;
     return;
   }
-  // TODO: Support more dtypes.
-  CAFFE_THROW("Bad dtype");
-}
-
-// Set flag if running on ios
-#ifdef __APPLE__
-  #include <TargetConditionals.h>
-  #if TARGET_OS_IPHONE
-    #define IS_IOS_NNAPI_BIND
-  #endif
-#endif
-
-#ifndef IS_IOS_NNAPI_BIND
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static auto register_NnapiCompilation = [](){
-  try {
-    return torch::jit::class_<NnapiCompilation>("_nnapi", "Compilation")
-        .def(torch::jit::init<>())
-        .def("init", &NnapiCompilation::init)
-        .def("run", &NnapiCompilation::run)
-        ;
-  } catch (std::exception& exn) {
-    LOG(ERROR) << "Failed to register class nnapi.Compilation: " << exn.what();
-    throw;
+  if (t.scalar_type() == c10::kShort) {
+    TORCH_WARN(
+      "NNAPI qint16 inputs to model are only supported for ",
+      "testing with fixed scale, zero_point. Please change your ",
+      "inputs if you see this in production");
+    operand->type = ANEURALNETWORKS_TENSOR_QUANT16_ASYMM;
+    // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
+    operand->scale = 0.125;
+    operand->zeroPoint = 0;
+    return;
   }
-}();
-#else
-  #undef IS_IOS_NNAPI_BIND
-#endif
+
+  // TODO: Support more dtypes.
+  CAFFE_THROW("Bad dtype: " + std::to_string(static_cast<int8_t>(t.scalar_type())));
+}
 
 } // namespace bind
 } // namespace nnapi
