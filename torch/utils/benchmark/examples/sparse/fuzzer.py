@@ -1,3 +1,4 @@
+# mypy: allow-untyped-defs
 """Example of the Timer and Sparse Fuzzer APIs:
 
 $ python -m examples.sparse.fuzzer
@@ -80,7 +81,7 @@ def main():
     print()
 
     # More string munging to make pretty output.
-    print(f"Average attemts per valid config: {1. / (1. - add_fuzzer.rejection_rate):.1f}")
+    print(f"Average attempts per valid config: {1. / (1. - add_fuzzer.rejection_rate):.1f}")
 
     def time_fn(m):
         return m.mean / m.metadata["nnz"]

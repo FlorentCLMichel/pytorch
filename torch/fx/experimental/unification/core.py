@@ -1,3 +1,4 @@
+# mypy: allow-untyped-defs
 from collections.abc import Iterator  # type: ignore[import]
 from functools import partial
 
@@ -6,9 +7,11 @@ from .utils import transitive_get as walk
 from .variable import isvar
 from .dispatch import dispatch
 
-################
-# Reificiation #
-################
+__all__ = ["reify", "unify"]
+
+###############
+# Reification #
+###############
 
 @dispatch(Iterator, dict)
 def _reify(t, s):
@@ -28,7 +31,7 @@ _reify
 
 @dispatch(dict, dict)  # type: ignore[no-redef]
 def _reify(d, s):
-    return dict((k, reify(v, s)) for k, v in d.items())
+    return {k: reify(v, s) for k, v in d.items()}
 _reify
 
 @dispatch(object, dict)  # type: ignore[no-redef]
@@ -37,6 +40,7 @@ def _reify(o, s):
 
 def reify(e, s):
     """ Replace variables of expression with substitution
+    >>> # xdoctest: +SKIP
     >>> x, y = var(), var()
     >>> e = (1, x, (3, y))
     >>> s = {x: 2, y: 4}

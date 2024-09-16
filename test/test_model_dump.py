@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # Owner(s): ["oncall: mobile"]
 
-import sys
 import os
 import io
 import functools
@@ -18,7 +17,7 @@ from torch.testing._internal.common_quantized import supported_qengines
 
 
 class SimpleModel(torch.nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.layer1 = torch.nn.Linear(16, 64)
         self.relu1 = torch.nn.ReLU()
@@ -35,7 +34,7 @@ class SimpleModel(torch.nn.Module):
 
 
 class QuantModel(torch.nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.quant = torch.ao.quantization.QuantStub()
         self.dequant = torch.ao.quantization.DeQuantStub()
@@ -49,7 +48,7 @@ class QuantModel(torch.nn.Module):
 
 
 class ModelWithLists(torch.nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.rt = [torch.zeros(1)]
         self.ot = [torch.zeros(1), None]
@@ -85,8 +84,7 @@ def webdriver_test(testfunc):
 
 class TestModelDump(TestCase):
     def needs_resources(self):
-        if sys.version_info < (3, 7):
-            self.skipTest("importlib.resources was new in 3.7")
+        pass
 
     def test_inline_skeleton(self):
         self.needs_resources()
@@ -131,6 +129,8 @@ class TestModelDump(TestCase):
 
         with tempfile.NamedTemporaryFile() as tf:
             torch.jit.save(torch.jit.script(SimpleModel()), tf)
+            # Actually write contents to disk so we can read it below
+            tf.flush()
 
             stdout = io.StringIO()
             torch.utils.model_dump.main(
@@ -223,7 +223,7 @@ class TestModelDump(TestCase):
 
         # Make sure we can handle a model with both constants and data tensors.
         class ComposedModule(torch.nn.Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.w1 = torch.zeros(1, 2)
                 self.w2 = torch.ones(2, 2)

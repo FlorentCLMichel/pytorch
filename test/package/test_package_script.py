@@ -6,11 +6,8 @@ from unittest import skipIf
 
 import torch
 from torch.package import PackageExporter, PackageImporter
-from torch.testing._internal.common_utils import (
-    IS_FBCODE,
-    IS_SANDCASTLE,
-    run_tests,
-)
+from torch.testing._internal.common_utils import IS_FBCODE, IS_SANDCASTLE, run_tests
+
 
 try:
     from .common import PackageTestCase
@@ -86,7 +83,7 @@ class TestPackageScript(PackageTestCase):
                     class UsesInterface(torch.nn.Module):
                         proxy_mod: ModuleInterface
 
-                        def __init__(self):
+                        def __init__(self) -> None:
                             super().__init__()
                             self.proxy_mod = ImplementsInterface()
 
@@ -244,15 +241,12 @@ class TestPackageScript(PackageTestCase):
         """
 
         class Submod(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-
             def forward(self, input: str):
                 input = input + "_submod"
                 return input
 
         class TopMod(torch.nn.Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.modB = Submod()
 
@@ -264,9 +258,6 @@ class TestPackageScript(PackageTestCase):
         # redefinition is intentional, change single inner string
         # string attribute, should trigger new module type
         class Submod(torch.nn.Module):  # noqa: F811
-            def __init__(self):
-                super().__init__()
-
             def forward(self, input: str):
                 input = input + "_submod(changed)"
                 return input
@@ -538,10 +529,7 @@ class TestPackageScript(PackageTestCase):
         Test tensors shared across eager and ScriptModules on load
         are the same.
         """
-        from package_a.test_module import (
-            ModWithTensor,
-            ModWithTwoSubmodsAndTensor,
-        )
+        from package_a.test_module import ModWithTensor, ModWithTwoSubmodsAndTensor
 
         shared_tensor = torch.ones(3, 3)
 
@@ -595,10 +583,7 @@ class TestPackageScript(PackageTestCase):
         the backing cpp TensorImpl is. We load/save storages based off of this
         cpp TensorImpl and not the python identity.
         """
-        from package_a.test_module import (
-            ModWithTensor,
-            ModWithTwoSubmodsAndTensor,
-        )
+        from package_a.test_module import ModWithTensor, ModWithTwoSubmodsAndTensor
 
         shared_tensor = torch.ones(3, 3)
 
@@ -725,7 +710,7 @@ class TestPackageScript(PackageTestCase):
         """
 
         class TorchVisionTestInline(torch.nn.Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.tvmod = resnet18()
 
@@ -764,7 +749,7 @@ class TestPackageScript(PackageTestCase):
         """
 
         class M(torch.nn.Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.foo = torch.ones(2, 3)
 

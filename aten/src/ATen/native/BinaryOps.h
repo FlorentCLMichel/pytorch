@@ -3,13 +3,15 @@
 #include <ATen/core/TensorBase.h>
 #include <ATen/native/DispatchStub.h>
 #include <c10/core/Scalar.h>
+#include <c10/util/TypeSafeSignMath.h>
+
 
 namespace at {
 struct TensorIterator;
 struct TensorIteratorBase;
 }
 
-namespace at { namespace native {
+namespace at::native {
 
 inline void alpha_check(const ScalarType dtype, const Scalar& alpha) {
   TORCH_CHECK(! alpha.isBoolean() || dtype == ScalarType::Bool,
@@ -101,5 +103,17 @@ DECLARE_DISPATCH(structured_binary_fn, copysign_stub);
 DECLARE_DISPATCH(structured_binary_fn, xlogy_stub);
 DECLARE_DISPATCH(structured_binary_fn, xlog1py_stub);
 DECLARE_DISPATCH(structured_binary_fn, zeta_stub);
+DECLARE_DISPATCH(structured_binary_fn, chebyshev_polynomial_t_stub);
+DECLARE_DISPATCH(structured_binary_fn, chebyshev_polynomial_u_stub);
+DECLARE_DISPATCH(structured_binary_fn, chebyshev_polynomial_v_stub);
+DECLARE_DISPATCH(structured_binary_fn, chebyshev_polynomial_w_stub);
+DECLARE_DISPATCH(structured_binary_fn, hermite_polynomial_h_stub);
+DECLARE_DISPATCH(structured_binary_fn, hermite_polynomial_he_stub);
+DECLARE_DISPATCH(structured_binary_fn, laguerre_polynomial_l_stub);
+DECLARE_DISPATCH(structured_binary_fn, legendre_polynomial_p_stub);
+DECLARE_DISPATCH(structured_binary_fn, shifted_chebyshev_polynomial_t_stub);
+DECLARE_DISPATCH(structured_binary_fn, shifted_chebyshev_polynomial_u_stub);
+DECLARE_DISPATCH(structured_binary_fn, shifted_chebyshev_polynomial_v_stub);
+DECLARE_DISPATCH(structured_binary_fn, shifted_chebyshev_polynomial_w_stub);
 
-}} // namespace at::native
+} // namespace at::native

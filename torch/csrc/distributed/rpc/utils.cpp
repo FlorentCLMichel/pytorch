@@ -27,9 +27,7 @@
 
 using namespace torch::autograd::profiler;
 
-namespace torch {
-namespace distributed {
-namespace rpc {
+namespace torch::distributed::rpc {
 namespace {
 void processRemoteProfiledEvents(
     autograd::RpcWithProfilingResp& rpcWithProfilingResp) {
@@ -38,7 +36,7 @@ void processRemoteProfiledEvents(
   TORCH_CHECK(
       enabled,
       "Profiler was expected to be enabled. This can happen in callback "
-      " continutations that run in different threads, and the TLS of the "
+      " continuations that run in different threads, and the TLS of the "
       " profiler was not propagated.");
   std::vector<LegacyEvent> events = rpcWithProfilingResp.getProfiledEvents();
   const auto& profilingId = rpcWithProfilingResp.getProfilingId();
@@ -92,7 +90,7 @@ std::string makeRPCError(
   return fmt::format(
       "{}:{}:{}",
       torch::distributed::rpc::kRPCErrorPrefix,
-      errorType,
+      static_cast<int>(errorType),
       rpcErrorStr);
 }
 
@@ -297,8 +295,8 @@ parseWireSections(const void* data, size_t data_size) {
     if (ptr == endp) {
       break;
     }
-    size_t sz = c10::stoll(std::string(sizePtr, ptr - sizePtr));
-    headerEnts.emplace_back(std::make_pair(name, sz));
+    size_t sz = std::stoll(std::string(sizePtr, ptr - sizePtr));
+    headerEnts.emplace_back(name, sz);
     ++ptr; // past the '\n'
   }
   if (!ok) {
@@ -389,7 +387,7 @@ std::string wireSerialize(
       // out of scope of this loop.
       auto writeableTensorData = jit::getWriteableTensorData(tensorData[i]);
       entries.push_back(
-          {c10::to_string(i),
+          {std::to_string(i),
            writeableTensorData.data(),
            writeableTensorData.sizeInBytes()});
     }
@@ -401,7 +399,7 @@ std::string wireSerialize(
     tot += e.size;
     header.append(e.name)
         .append(" ")
-        .append(c10::to_string(e.size))
+        .append(std::to_string(e.size))
         .append("\n");
   }
   header.push_back('\n');
@@ -479,7 +477,7 @@ void writeWrappedPayload(
   int64_t indexToWrite = originalPayload.size();
   originalPayload.resize(originalPayload.size() + sizeof(int64_t));
   const int64_t additionalPayloadSize = additionalPayload.size();
-  torch::utils::THP_encodeInt64Buffer(
+  torch::utils::THP_encodeBuffer(
       reinterpret_cast<uint8_t*>(originalPayload.data()) + indexToWrite,
       &additionalPayloadSize,
       torch::utils::THPByteOrder::THP_BIG_ENDIAN,
@@ -492,9 +490,9 @@ std::vector<at::IValue> readWrappedPayload(
   // Read the additional payload remove it from the payload.
   // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   int64_t additionalPayloadSize;
+  TORCH_INTERNAL_ASSERT(payload.size() >= sizeof(int64_t));
   size_t indexToRead = payload.size() - sizeof(int64_t);
-  TORCH_INTERNAL_ASSERT(indexToRead >= 0);
-  torch::utils::THP_decodeInt64Buffer(
+  torch::utils::THP_decodeBuffer(
       &additionalPayloadSize,
       reinterpret_cast<uint8_t*>(payload.data()) + indexToRead,
       torch::utils::THPByteOrder::THP_BIG_ENDIAN,
@@ -502,8 +500,8 @@ std::vector<at::IValue> readWrappedPayload(
   payload.resize(indexToRead);
 
   TORCH_INTERNAL_ASSERT(
-      // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
-      payload.size() > additionalPayloadSize,
+      additionalPayloadSize > 0 &&
+          static_cast<int64_t>(payload.size()) > additionalPayloadSize,
       "Wrong payload sizes: payload.size() is ",
       payload.size(),
       " but additional payload size is ",
@@ -579,6 +577,4 @@ void populateRemoteProfiledEvents(
   }
 }
 
-} // namespace rpc
-} // namespace distributed
-} // namespace torch
+} // namespace torch::distributed::rpc

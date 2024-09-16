@@ -8,15 +8,13 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.nn import Linear, Module
 from torch.optim import SGD
 from torch.testing._internal.common_distributed import skip_if_lt_x_gpu
-from torch.testing._internal.common_fsdp import (
-    FSDPTest,
-)
+from torch.testing._internal.common_fsdp import FSDPTest
 from torch.testing._internal.common_utils import (
-    TEST_WITH_DEV_DBG_ASAN,
     instantiate_parametrized_tests,
     parametrize,
     run_tests,
     subtest,
+    TEST_WITH_DEV_DBG_ASAN,
 )
 
 
@@ -43,7 +41,7 @@ class TestInput(FSDPTest):
         """Test FSDP with input being a list or a dict, only single GPU."""
 
         class Model(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.layer = Linear(4, 4)
 

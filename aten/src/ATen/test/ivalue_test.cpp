@@ -49,6 +49,14 @@ TEST(IValueTest, Basic) {
   ASSERT_TRUE(dlist.isNone());
   dlist = IValue(c10::List<double>({3.4}));
   ASSERT_TRUE(dlist.toDoubleVector() == std::vector<double>({3.4}));
+  dlist = IValue(std::vector<double>({3.3, 3.2}));
+  ASSERT_TRUE(dlist.toDoubleVector() == std::vector<double>({3.3, 3.2}));
+  IValue blist(std::vector<bool>{true, false});
+  ASSERT_TRUE(blist.isList());
+  const auto blistRef = blist.toListRef();
+  ASSERT_EQ(blistRef.size(), 2);
+  ASSERT_TRUE(blistRef[0].toBool());
+  ASSERT_FALSE(blistRef[1].toBool());
   IValue the_list(
       at::ivalue::Tuple::create({IValue(3.4), IValue(4), IValue(foo)}));
   ASSERT_EQ(foo.use_count(), 3);
@@ -400,7 +408,6 @@ TEST(IValueTest, FutureSetError) {
     EXPECT_THAT(e.what(), ::testing::HasSubstr("bar"));
   }
 }
-
 
 TEST(IValueTest, ValueEquality) {
   EXPECT_EQ(IValue("asdf"), IValue("asdf"));
@@ -762,7 +769,7 @@ TEST(IValueTest, getSubValues) {
 
   IValue dict(std::move(m));
 
-  auto objType = ClassType::create(nullopt, {});
+  auto objType = ClassType::create(std::nullopt, {});
   objType->addAttribute("t1", tv1.type());
   objType->addAttribute("t2", tv2.type());
 
@@ -802,6 +809,23 @@ TEST(IValueTest, ToWeakAndBack) {
     WeakIValue weak(sample);
     EXPECT_IVALUE_EQ(sample, weak.lock());
   }
+}
+
+// Storage and Generator did not set is_intrusive_ptr if they were
+// undefined, which led use_count to return 1 instead of 0 for these
+// cases.
+TEST(IValueTest, UseCountCornerCases) {
+  at::Storage undefinedStorage;
+  at::Generator undefinedGenerator;
+  at::Tensor undefinedTensor;
+
+  IValue ivEmptyStorage(undefinedStorage);
+  IValue ivEmptyGenerator(undefinedGenerator);
+  IValue ivEmptyTensor(undefinedTensor);
+
+  ASSERT_EQ(1, ivEmptyStorage.use_count());
+  ASSERT_EQ(1, ivEmptyGenerator.use_count());
+  ASSERT_EQ(0, ivEmptyTensor.use_count());
 }
 
 // TODO(gmagogsfm): Add type conversion test?

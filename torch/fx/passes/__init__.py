@@ -3,6 +3,8 @@ from . import graph_manipulation
 from . import net_min_base
 from . import operator_support
 from . import param_fetch
+from . import reinplace
+from . import runtime_assert
 from . import shape_prop
 from . import split_module
 from . import split_utils

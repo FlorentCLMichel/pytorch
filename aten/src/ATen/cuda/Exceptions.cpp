@@ -3,8 +3,7 @@
 
 #include <ATen/cuda/Exceptions.h>
 
-namespace at {
-namespace cuda {
+namespace at::cuda {
 namespace blas {
 
 C10_EXPORT const char* _cublasGetErrorEnum(cublasStatus_t error) {
@@ -50,7 +49,7 @@ namespace solver {
 
 C10_EXPORT const char* cusolverGetErrorMessage(cusolverStatus_t status) {
   switch (status) {
-    case CUSOLVER_STATUS_SUCCESS:                     return "CUSOLVER_STATUS_SUCCES";
+    case CUSOLVER_STATUS_SUCCESS:                     return "CUSOLVER_STATUS_SUCCESS";
     case CUSOLVER_STATUS_NOT_INITIALIZED:             return "CUSOLVER_STATUS_NOT_INITIALIZED";
     case CUSOLVER_STATUS_ALLOC_FAILED:                return "CUSOLVER_STATUS_ALLOC_FAILED";
     case CUSOLVER_STATUS_INVALID_VALUE:               return "CUSOLVER_STATUS_INVALID_VALUE";
@@ -65,4 +64,23 @@ C10_EXPORT const char* cusolverGetErrorMessage(cusolverStatus_t status) {
 } // namespace solver
 #endif
 
-}} // namespace at::cuda
+#if defined(USE_CUDSS)
+namespace cudss {
+
+C10_EXPORT const char* cudssGetErrorMessage(cudssStatus_t status) {
+  switch (status) {
+    case CUDSS_STATUS_SUCCESS:                     return "CUDSS_STATUS_SUCCESS";
+    case CUDSS_STATUS_NOT_INITIALIZED:             return "CUDSS_STATUS_NOT_INITIALIZED";
+    case CUDSS_STATUS_ALLOC_FAILED:                return "CUDSS_STATUS_ALLOC_FAILED";
+    case CUDSS_STATUS_INVALID_VALUE:               return "CUDSS_STATUS_INVALID_VALUE";
+    case CUDSS_STATUS_NOT_SUPPORTED:               return "CUDSS_STATUS_NOT_SUPPORTED";
+    case CUDSS_STATUS_EXECUTION_FAILED:            return "CUDSS_STATUS_EXECUTION_FAILED";
+    case CUDSS_STATUS_INTERNAL_ERROR:              return "CUDSS_STATUS_INTERNAL_ERROR";
+    default:                                       return "Unknown cudss error number";
+  }
+}
+
+} // namespace cudss
+#endif
+
+} // namespace at::cuda

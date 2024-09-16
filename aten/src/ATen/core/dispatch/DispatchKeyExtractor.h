@@ -21,7 +21,7 @@ namespace impl {
 // on TLS.
 //
 // NB: If there is no valid dispatch key, this will return Undefined
-static inline DispatchKeySet computeDispatchKeySet(
+inline DispatchKeySet computeDispatchKeySet(
     DispatchKeySet ks,
     // The key mask lets us eliminate (by zero entries) keys which should not
     // be considered for dispatch.  There are two cases when we use this:
@@ -42,7 +42,7 @@ static inline DispatchKeySet computeDispatchKeySet(
   // be nice to only do one.  Can always_included be folded into the TLS?  Well,
   // it's a bit troublesome, because fastpath TLS access requires the type of
   // the TLS in question to be zero-initialized, so you don't actually win
-  // anyting in that case.
+  // anything in that case.
   return (((ks | local.included_) - local.excluded_) & key_mask);
 }
 
@@ -56,7 +56,7 @@ namespace detail {
     void operator()(const at::Tensor& x) {
       ts = ts | x.key_set();
     }
-    void operator()(const c10::optional<at::Tensor>& x) {
+    void operator()(const std::optional<at::Tensor>& x) {
       if (x.has_value()) {
         ts = ts | x->key_set();
       }
@@ -67,14 +67,20 @@ namespace detail {
       }
     }
     // Tensor?[] translates to this case.
-    void operator()(const c10::List<c10::optional<at::Tensor>>& xs) {
-      for (c10::optional<at::Tensor> x : xs) {
+    void operator()(const c10::List<std::optional<at::Tensor>>& xs) {
+      for (std::optional<at::Tensor> x : xs) {
         if (x.has_value()) {
           ts = ts | x.value().key_set();
         }
       }
     }
-    void operator()(at::ArrayRef<c10::optional<at::Tensor>>) {
+    // Structured Tensor[] translates to this case
+    void operator()(const at::ITensorListRef& xs) {
+      for (const auto& x : xs) {
+        ts = ts | x.key_set();
+      }
+    }
+    [[noreturn]] void operator()(at::ArrayRef<std::optional<at::Tensor>>) {
       // Just checking that the handling of Tensor?[] didn't change.
       TORCH_INTERNAL_ASSERT(false);
     }
@@ -83,7 +89,7 @@ namespace detail {
         ts = ts | gen.key_set();
       }
     }
-    void operator()(const c10::optional<at::Generator>& gen) {
+    void operator()(const std::optional<at::Generator>& gen) {
       if (gen.has_value() && gen->defined()) {
         ts = ts | gen->key_set();
       }
@@ -114,6 +120,9 @@ namespace detail {
  *    they have been registered as fallthrough.  The set of excluded backends
  *    varies from operator, as some operators may have overridden the
  *    fallthrough with custom behavior.
+ *
+ *   Note - this should maintain identical impl to the py dispatcher key extraction logic
+ *   at pytorch/torch/dispatcher.py
  */
 struct TORCH_API DispatchKeyExtractor final {
 public:
@@ -142,7 +151,7 @@ public:
         // no safe toTensorRef method, alas)
         ks = ks | ivalue.unsafeToTensorImpl()->key_set();
       } else if (C10_UNLIKELY(ivalue.isTensorList())) {
-        for (const at::Tensor tensor : ivalue.toTensorList()) {
+        for (const at::Tensor& tensor : ivalue.toTensorList()) {
           ks = ks | tensor.key_set();
         }
       }
@@ -156,14 +165,24 @@ public:
       }
     });
     // Keys that are fallthrough should be skipped
-    return impl::computeDispatchKeySet(ks, nonFallthroughKeys_);
+    if (requiresBitsetPerBackend_) {
+      auto backend_idx = ks.getBackendIndex();
+      return impl::computeDispatchKeySet(ks, nonFallthroughKeysPerBackend_[backend_idx]);
+    } else {
+      return impl::computeDispatchKeySet(ks, nonFallthroughKeys_);
+    }
   }
 
   template<class... Args>
   DispatchKeySet getDispatchKeySetUnboxed(const Args&... args) const {
     auto ks = detail::multi_dispatch_key_set(args...);
     // Keys that are fallthrough should be skipped
-    return impl::computeDispatchKeySet(ks, nonFallthroughKeys_);
+    if (requiresBitsetPerBackend_) {
+      auto backend_idx = ks.getBackendIndex();
+      return impl::computeDispatchKeySet(ks, nonFallthroughKeysPerBackend_[backend_idx]);
+    } else {
+      return impl::computeDispatchKeySet(ks, nonFallthroughKeys_);
+    }
   }
 
   void setOperatorHasFallthroughForKey(DispatchKey k, bool has_fallthrough);
@@ -193,7 +212,12 @@ private:
 
   explicit DispatchKeyExtractor(c10::utils::bitset dispatch_arg_indices_reverse)
   : dispatch_arg_indices_reverse_(dispatch_arg_indices_reverse)
-  , nonFallthroughKeys_(DispatchKeySet::FULL) {}
+  , nonFallthroughKeys_(DispatchKeySet::FULL)
+  , requiresBitsetPerBackend_(false) {
+    for (const auto i : c10::irange(nonFallthroughKeysPerBackend_.size())) {
+      nonFallthroughKeysPerBackend_[i] = DispatchKeySet::FULL;
+    }
+  }
 
   // this is a bitset that has ones for each argument index which has to be
   // considered for dispatch. This avoids having to iterate over the stack
@@ -205,8 +229,14 @@ private:
   // fallthrough
   c10::utils::bitset dispatch_arg_indices_reverse_;
 
-  // Set of keys for which the operator does NOT have fallthrough kernel.
+  // Set of functionality keys for which the operator does NOT have fallthrough kernel.
   DispatchKeySet nonFallthroughKeys_;
+  // Set of functionality keys for which the operator does NOT have fallthrough kernel, defined PER BACKEND.
+  // This is only needed if we know that the operator has a different set of fallthroughs defined for some backends.
+  std::array<DispatchKeySet, num_backends> nonFallthroughKeysPerBackend_;
+  // Flag to tell us if we can use the single set of nonFallthroughKeys_ (fast path),
+  // or if we need to fall back to the slower path and check nonFallthroughKeysPerBackend_
+  bool requiresBitsetPerBackend_;
 };
 
 }

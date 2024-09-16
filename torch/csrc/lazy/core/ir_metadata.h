@@ -1,6 +1,6 @@
 #pragma once
 
-#include <c10/util/Optional.h>
+#include <c10/macros/Macros.h>
 
 #include <string>
 #include <vector>
@@ -43,13 +43,7 @@ struct TORCH_API ScopePusher {
   static void ResetScopes();
 };
 
-MetaData GetMetaDataIfDebugging();
-
-// If python bindings for lazy tensor core are initialized, they should
-// register a function to get python frame info.  Otherwise, frame info
-// will not be available.
-TORCH_API void RegisterGetFrameInfo(
-    const std::function<std::vector<SourceLocation>()>& getFrameInfo);
+TORCH_API MetaData GetMetaDataIfDebugging();
 
 } // namespace lazy
 } // namespace torch

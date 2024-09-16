@@ -21,7 +21,7 @@ namespace nn {
 /// because then storing a module would always require templatizing it.
 template <typename Derived>
 // NOLINTNEXTLINE(bugprone-exception-escape)
-class Cloneable : public virtual Module {
+class Cloneable : public Module {
  public:
   using Module::Module;
 
@@ -33,7 +33,7 @@ class Cloneable : public virtual Module {
   /// and submodules in the cloned module are different from those in the
   /// original module.
   std::shared_ptr<Module> clone(
-      const optional<Device>& device = nullopt) const override {
+      const std::optional<Device>& device = std::nullopt) const override {
     NoGradGuard no_grad;
 
     const auto& self = static_cast<const Derived&>(*this);
@@ -50,8 +50,9 @@ class Cloneable : public virtual Module {
         "and not the constructor?");
     for (const auto& parameter : named_parameters(/*recurse=*/false)) {
       auto& tensor = *parameter;
-      auto data = device && tensor.device() != *device ?
-          tensor.to(*device) : autograd::Variable(tensor).clone();
+      auto data = device && tensor.device() != *device
+          ? tensor.to(*device)
+          : autograd::Variable(tensor).clone();
       copy->parameters_[parameter.key()].set_data(data);
     }
     TORCH_CHECK(
@@ -62,8 +63,9 @@ class Cloneable : public virtual Module {
         "and not the constructor?");
     for (const auto& buffer : named_buffers(/*recurse=*/false)) {
       auto& tensor = *buffer;
-      auto data = device && tensor.device() != *device ?
-          tensor.to(*device) : autograd::Variable(tensor).clone();
+      auto data = device && tensor.device() != *device
+          ? tensor.to(*device)
+          : autograd::Variable(tensor).clone();
       copy->buffers_[buffer.key()].set_data(data);
     }
     TORCH_CHECK(
@@ -79,7 +81,7 @@ class Cloneable : public virtual Module {
   }
 
  private:
-  void clone_(Module& other, const optional<Device>& device) final {
+  void clone_(Module& other, const std::optional<Device>& device) final {
     // Here we are *pretty* certain that `other's` type is `Derived` (because it
     // was registered under the same name as `this`), but you never know what
     // crazy things `reset()` does, so `dynamic_cast` just to be safe.
@@ -88,7 +90,7 @@ class Cloneable : public virtual Module {
         clone != nullptr,
         "Attempted to clone submodule, but it is of a "
         "different type than the submodule it was to be cloned into");
-    static_cast<Derived&>(*this) = std::move(*clone);
+    static_cast<Derived&>(*this) = *clone;
   }
 };
 

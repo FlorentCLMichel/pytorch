@@ -1,3 +1,4 @@
+# mypy: allow-untyped-defs
 from .core import unify, reify  # type: ignore[attr-defined]
 from .dispatch import dispatch
 
@@ -7,6 +8,7 @@ def unifiable(cls):
     This uses the type and __dict__ or __slots__ attributes to define the
     nature of the term
     See Also:
+    >>> # xdoctest: +SKIP
     >>> class A(object):
     ...     def __init__(self, a, b):
     ...         self.a = a
@@ -32,6 +34,7 @@ def unifiable(cls):
 
 def reify_object(o, s):
     """ Reify a Python object with a substitution
+    >>> # xdoctest: +SKIP
     >>> class Foo(object):
     ...     def __init__(self, a, b):
     ...         self.a = a
@@ -86,6 +89,7 @@ def _reify(o, s):
 def unify_object(u, v, s):
     """ Unify two Python objects
     Unifies their type and ``__dict__`` attributes
+    >>> # xdoctest: +SKIP
     >>> class Foo(object):
     ...     def __init__(self, a, b):
     ...         self.a = a
@@ -106,6 +110,7 @@ def unify_object(u, v, s):
                      s)
     else:
         return unify(u.__dict__, v.__dict__, s)
+
 
 @dispatch(slice, slice, dict)
 def _unify(u, v, s):

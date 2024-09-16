@@ -3,6 +3,8 @@
 #include <torch/csrc/lazy/backend/backend_interface.h>
 #include <torch/csrc/lazy/core/shape.h>
 
+#include <ATen/FunctionalTensorWrapper.h>
+
 #include <string>
 #include <vector>
 
@@ -41,7 +43,7 @@ inline at::Tensor CopyTensor(
 }
 
 template <typename T, typename S>
-T OptionalOr(const c10::optional<S>& value, T defval) {
+T OptionalOr(const std::optional<S>& value, T defval) {
   return value ? static_cast<T>(*value) : defval;
 }
 
@@ -61,6 +63,16 @@ at::Scalar MakeIntScalar(T value) {
 // values which are within a given set, are routed to constant scalars if this
 // API returns true.
 TORCH_API bool IsSpecialScalar(const at::Scalar& value);
+
+// Note: returns a reference instead of a fresh tensor to avoid refcount bumps.
+inline const at::Tensor& maybe_unwrap_functional(const at::Tensor& tensor) {
+  if (at::functionalization::impl::isFunctionalTensor(tensor)) {
+    return at::functionalization::impl::unsafeGetFunctionalWrapper(tensor)
+        ->value();
+  } else {
+    return tensor;
+  }
+}
 
 } // namespace lazy
 } // namespace torch

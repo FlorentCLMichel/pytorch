@@ -7,8 +7,9 @@
 #include <torch/csrc/jit/jit_log.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 
-namespace torch {
-namespace jit {
+#include <utility>
+
+namespace torch::jit {
 
 namespace {
 
@@ -170,7 +171,7 @@ static void RemoveTupleConstants(Node* n) {
   }
   auto tuple_type = n->output()->type()->expect<TupleType>();
   auto tuple_construct = g->insertNode(n->owningGraph()->createTuple(
-      elements, tuple_type->schema() ? tuple_type : nullptr));
+      elements, tuple_type->schema() ? std::move(tuple_type) : nullptr));
   tuple_construct->copyMetadata(n);
 
   // insert the tuple first before recursing on its elements, so that its
@@ -336,5 +337,4 @@ void LowerSimpleTuples(const std::shared_ptr<Graph>& graph) {
   GRAPH_DUMP("After LowerSimpleTuples: ", graph);
   EliminateDeadCode(graph);
 }
-} // namespace jit
-} // namespace torch
+} // namespace torch::jit

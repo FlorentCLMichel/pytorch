@@ -7,10 +7,11 @@
 #include <ATen/Dispatch.h>
 #include <ATen/Parallel.h>
 #include <ATen/TensorIterator.h>
-#include <ATen/cpu/vml.h>
+#include <ATen/cpu/vec/functional.h>
 #include <c10/util/irange.h>
 
-namespace at { namespace native { namespace {
+namespace at::native {
+namespace {
 
 template<typename scalar_t>
 struct Dist {
@@ -145,7 +146,7 @@ struct Dist {
 
   template <typename F>
   static void run_parallel_pdist(Tensor& result, const Tensor& self, const scalar_t p) {
-    const scalar_t * const self_start = self.data_ptr<scalar_t>();
+    const scalar_t * const self_start = self.const_data_ptr<scalar_t>();
     const scalar_t * const self_end = self_start + self.numel();
     int64_t n = self.size(0);
     int64_t m = self.size(1);
@@ -202,8 +203,8 @@ struct Dist {
 
   template <typename F>
   static void run_parallel_cdist(Tensor& result, const Tensor& t1, const Tensor& t2, const scalar_t p) {
-    const scalar_t * const t1_start = t1.data_ptr<scalar_t>();
-    const scalar_t * const t2_start = t2.data_ptr<scalar_t>();
+    const scalar_t * const t1_start = t1.const_data_ptr<scalar_t>();
+    const scalar_t * const t2_start = t2.const_data_ptr<scalar_t>();
     int64_t d = t1.size(0);
     int64_t r1 = t1.size(-2);
     int64_t r2 = t2.size(-2);
@@ -295,14 +296,14 @@ struct Dist {
     const int64_t m = self.size(1);
     const int64_t gs = grad.stride(0);
 
-    const scalar_t * const grad_start = grad.data_ptr<scalar_t>();
-    const scalar_t * const dist_start = dist.data_ptr<scalar_t>();
-    const scalar_t * const self_start = self.data_ptr<scalar_t>();
+    const scalar_t * const grad_start = grad.const_data_ptr<scalar_t>();
+    const scalar_t * const dist_start = dist.const_data_ptr<scalar_t>();
+    const scalar_t * const self_start = self.const_data_ptr<scalar_t>();
     scalar_t * const res_start = result.data_ptr<scalar_t>();
 
     // The only way to parallelize and avoid locking requires parallelizing
     // over the columns of the input, i.e. we compute the gradient for the
-    // first section of each vector independentaly of the second section, etc.
+    // first section of each vector independently of the second section, etc.
     at::parallel_for(0, m / Vec::size(), internal::GRAIN_SIZE / (8 * n * n), [p, n, m, gs, grad_start, dist_start, self_start, res_start](int64_t l, int64_t end) {
       const Vec pvec(p);
 
@@ -366,10 +367,10 @@ struct Dist {
     //don't use grad.stride(-1), because if last dimension is 1, stride can be bogus.
     const int64_t gs = 1;
 
-    const scalar_t * const grad_start = grad.data_ptr<scalar_t>();
-    const scalar_t * const dist_start = dist.data_ptr<scalar_t>();
-    const scalar_t * const t1_start = t1.data_ptr<scalar_t>();
-    const scalar_t * const t2_start = t2.data_ptr<scalar_t>();
+    const scalar_t * const grad_start = grad.const_data_ptr<scalar_t>();
+    const scalar_t * const dist_start = dist.const_data_ptr<scalar_t>();
+    const scalar_t * const t1_start = t1.const_data_ptr<scalar_t>();
+    const scalar_t * const t2_start = t2.const_data_ptr<scalar_t>();
     scalar_t * const res_start = result.data_ptr<scalar_t>();
 
     at::parallel_for(0, m / Vec::size(), internal::GRAIN_SIZE / (16 * r1), [=](int64_t l, int64_t end) {
@@ -394,8 +395,7 @@ struct Dist {
     const scalar_t * t1_end = t1 + l1_size;
     const scalar_t * t2_end = t2 + l2_size;
 
-    for (const auto l : c10::irange(d)) {
-      (void)l; //Suppress unused variable warning
+    for (const auto l C10_UNUSED : c10::irange(d)) {
       for (; t1 != t1_end; t1 += m, res += m) {
         const Vec vec_t1 = Vec::loadu(t1, count);
         Vec res_vec = Vec::loadu(res, count);
@@ -448,4 +448,4 @@ REGISTER_DISPATCH(pdist_backward_stub, &pdist_backward_kernel_impl);
 REGISTER_DISPATCH(cdist_stub, &cdist_kernel_impl);
 REGISTER_DISPATCH(cdist_backward_stub, &cdist_backward_kernel_impl);
 
-}}  // namespace at::native
+}  // namespace at::native

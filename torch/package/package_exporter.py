@@ -1,25 +1,28 @@
+# mypy: allow-untyped-defs
 import collections
 import importlib.machinery
 import io
 import linecache
 import pickletools
+import platform
 import types
-from collections import OrderedDict, defaultdict
+from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
 from enum import Enum
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import (
     Any,
     BinaryIO,
     Callable,
+    cast,
+    DefaultDict,
     Dict,
     List,
     Optional,
     Sequence,
     Set,
     Union,
-    cast,
-    DefaultDict,
 )
 
 import torch
@@ -35,6 +38,14 @@ from ._stdlib import is_stdlib_module
 from .find_file_dependencies import find_files_source_depends_on
 from .glob_group import GlobGroup, GlobPattern
 from .importer import Importer, OrderedImporter, sys_importer
+
+
+__all__ = [
+    "PackagingErrorReason",
+    "EmptyMatchError",
+    "PackagingError",
+    "PackageExporter",
+]
 
 _gate_torchscript_serialization = True
 
@@ -70,7 +81,7 @@ class PackagingErrorReason(Enum):
     """
 
     def __repr__(self):
-        return "<%s.%s>" % (self.__class__.__name__, self.name)
+        return f"<{self.__class__.__name__}.{self.name}>"
 
     IS_EXTENSION_MODULE = (
         "Module is a C extension module. torch.package supports Python modules only."
@@ -113,8 +124,6 @@ class EmptyMatchError(Exception):
     ``allow_empty=False``, and is not matched with any module during packaging.
     """
 
-    pass
-
 
 class PackagingError(Exception):
     """This exception is raised when there is an issue with exporting a package.
@@ -122,7 +131,7 @@ class PackagingError(Exception):
     them to you at once.
     """
 
-    def __init__(self, dependency_graph: DiGraph):
+    def __init__(self, dependency_graph: DiGraph, debug=False):
         # Group errors by reason.
         broken: Dict[PackagingErrorReason, List[str]] = defaultdict(list)
         for module_name, attrs in dependency_graph.nodes.items():
@@ -145,7 +154,26 @@ class PackagingError(Exception):
                 error_context = dependency_graph.nodes[module_name].get("error_context")
                 if error_context is not None:
                     message.write(f"      Context: {error_context}\n")
-
+                if module_name in _DISALLOWED_MODULES:
+                    message.write(
+                        "      Note: While we usually use modules in the python standard library "
+                        f"from the local environment, `{module_name}` has a lot of system "
+                        "level access and therefore can pose a security risk. We heavily "
+                        f"recommend removing `{module_name}` from your packaged code. However, if that "
+                        "is not possible, add it to the extern list by calling "
+                        f'PackageExporter.extern("`{module_name}`")\n'
+                    )
+                if debug:
+                    module_path = dependency_graph.first_path(module_name)
+                    message.write(
+                        f"      A path to {module_name}: {' -> '.join(module_path)}\n"
+                    )
+        if not debug:
+            message.write("\n")
+            message.write(
+                "Set debug=True when invoking PackageExporter for a visualization of where "
+                "broken modules are coming from!\n"
+            )
         # Save the dependency graph so that tooling can get at it.
         self.dependency_graph = dependency_graph
         super().__init__(message.getvalue())
@@ -186,6 +214,7 @@ class PackageExporter:
         self,
         f: Union[str, Path, BinaryIO],
         importer: Union[Importer, Sequence[Importer]] = sys_importer,
+        debug: bool = False,
     ):
         """
         Create an exporter.
@@ -194,8 +223,11 @@ class PackageExporter:
             f: The location to export to. Can be a  ``string``/``Path`` object containing a filename
                 or a binary I/O object.
             importer: If a single Importer is passed, use that to search for modules.
-                If a sequence of importers are passsed, an ``OrderedImporter`` will be constructed out of them.
+                If a sequence of importers are passed, an ``OrderedImporter`` will be constructed out of them.
+            debug: If set to True, add path of broken modules to PackagingErrors.
         """
+        torch._C._log_api_usage_once("torch.package.PackageExporter")
+        self.debug = debug
         if isinstance(f, (Path, str)):
             f = str(f)
             self.buffer: Optional[BinaryIO] = None
@@ -412,17 +444,20 @@ class PackageExporter:
             return False
 
     def _get_source_of_module(self, module: types.ModuleType) -> Optional[str]:
-        filename = getattr(module, "__file__", None)
-        result = (
-            None
-            if filename is None or not filename.endswith(".py")
-            else linecache.getlines(filename, module.__dict__)
-        )
-
-        if result is None:
-            return None
-
-        return "".join(result)
+        filename = None
+        spec = getattr(module, "__spec__", None)
+        if spec is not None:
+            loader = getattr(spec, "loader", None)
+            if loader is not None and isinstance(loader, SourceFileLoader):
+                try:
+                    filename = loader.get_filename(module.__name__)
+                except ImportError:
+                    pass
+        if filename is None:
+            filename = getattr(module, "__file__", None)
+        if isinstance(filename, str) and filename.endswith(".py"):
+            return "".join(linecache.getlines(filename, module.__dict__))
+        return None
 
     def add_dependency(self, module_name: str, dependencies=True):
         """Given a module, add it to the dependency graph according to patterns
@@ -564,7 +599,7 @@ class PackageExporter:
         pickle_protocol: int = 3,
     ):
         """Save a python object to the archive using pickle. Equivalent to :func:`torch.save` but saving into
-        the archive rather than a stand-alone file. Stanard pickle does not save the code, only the objects.
+        the archive rather than a stand-alone file. Standard pickle does not save the code, only the objects.
         If ``dependencies`` is true, this method will also scan the pickled objects for which modules are required
         to reconstruct them and save the relevant code.
 
@@ -631,6 +666,7 @@ class PackageExporter:
                 if pickle_protocol == 4:
                     if (
                         opcode.name == "SHORT_BINUNICODE"
+                        or opcode.name == "BINUNICODE"
                         or opcode.name == "BINUNICODE8"
                     ):
                         assert isinstance(arg, str)
@@ -638,7 +674,7 @@ class PackageExporter:
                         field = arg
                         memo[memo_count] = arg
                     elif (
-                        opcode.name == "BINGET_LONG"
+                        opcode.name == "LONG_BINGET"
                         or opcode.name == "BINGET"
                         or opcode.name == "GET"
                     ):
@@ -648,6 +684,9 @@ class PackageExporter:
                     elif opcode.name == "MEMOIZE":
                         memo_count += 1
                     elif opcode.name == "STACK_GLOBAL":
+                        if module is None:
+                            # If not module was passed on in the entries preceeding this one, continue.
+                            continue
                         assert isinstance(module, str)
                         if module not in all_dependencies:
                             all_dependencies.append(module)
@@ -666,9 +705,9 @@ class PackageExporter:
                 """ If an object happens to come from a mocked module, then we collect these errors and spit them
                     out with the other errors found by package exporter.
                 """
-                if module in mocked_modules:
-                    assert isinstance(module, str)
-                    fields = mocked_modules[module]
+                if module_name in mocked_modules:
+                    assert isinstance(module_name, str)
+                    fields = mocked_modules[module_name]
                     self.dependency_graph.add_node(
                         module_name,
                         action=_ModuleProviderAction.MOCK,
@@ -873,23 +912,25 @@ class PackageExporter:
         )
 
     def _persistent_id(self, obj):
-        if torch.is_storage(obj) or isinstance(obj, torch.storage._TypedStorage):
-            if isinstance(obj, torch.storage._TypedStorage):
+        if torch.is_storage(obj) or isinstance(obj, torch.storage.TypedStorage):
+            storage: Storage
+            if isinstance(obj, torch.storage.TypedStorage):
                 # TODO: Once we decide to break serialization FC, we can
                 # remove this case
-                storage = obj._storage
+                untyped_storage = obj._untyped_storage
                 storage_type_str = obj.pickle_storage_type()
                 storage_type = getattr(torch, storage_type_str)
-                dtype = obj.dtype
+                storage = cast(Storage, untyped_storage)
                 storage_numel = obj.size()
 
-            else:
-                storage = obj
+            elif isinstance(obj, torch.UntypedStorage):
+                untyped_storage = obj
+                storage = cast(Storage, untyped_storage)
                 storage_type = normalize_storage_type(type(storage))
-                dtype = torch.uint8
                 storage_numel = storage.nbytes()
+            else:
+                raise RuntimeError(f"storage type not recognized: {type(obj)}")
 
-            storage = cast(Storage, storage)
             location = location_tag(storage)
 
             # serialize storage if not already written
@@ -900,7 +941,7 @@ class PackageExporter:
                     storage = storage.cpu()
                 num_bytes = storage.nbytes()
                 self.zip_file.write_record(
-                    f".data/{storage_id}.storage", storage.data_ptr(), num_bytes
+                    f".data/{storage_id}.storage", storage, num_bytes
                 )
             return ("storage", storage_type, storage_id, location, storage_numel)
 
@@ -908,7 +949,7 @@ class PackageExporter:
             if _gate_torchscript_serialization and isinstance(
                 obj, torch.jit.RecursiveScriptModule
             ):
-                raise Exception(
+                raise Exception(  # noqa: TRY002
                     "Serializing ScriptModules directly into a package is a beta feature. "
                     "To use, set global "
                     "`torch.package.package_exporter._gate_torchscript_serialization` to `False`."
@@ -928,7 +969,7 @@ class PackageExporter:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        # If __exit__ was called because an exception was raised, we do not attempt to
+        # If __exit__ was called because an exception was raised, we do not
         # attempt to finalize the package. Instead, control is returned to the
         # caller to continue raising the exception.
         if exc_type is not None:
@@ -957,9 +998,9 @@ class PackageExporter:
 
     def _validate_dependency_graph(self):
         # 1. Check the graph for any errors inserted during dependency analysis.
-        for module_name, attrs in self.dependency_graph.nodes.items():
+        for attrs in self.dependency_graph.nodes.values():
             if "error" in attrs:
-                raise PackagingError(self.dependency_graph)
+                raise PackagingError(self.dependency_graph, debug=self.debug)
 
         # 2. Check that all patterns for which allow_empty=False have been matched at least once.
         for pattern, pattern_info in self.patterns.items():
@@ -1010,7 +1051,7 @@ class PackageExporter:
                     )
 
                 if attrs.get("is_pickle") is True:
-                    # This node came from save_source_pickle, we don't need to write any source for it.
+                    # This node came from save_pickle, we don't need to write any source for it.
                     continue
 
                 is_package = attrs["is_package"]
@@ -1029,6 +1070,10 @@ class PackageExporter:
         extern_file_contents = "\n".join(extern_modules) + "\n"
         self._write(".data/extern_modules", extern_file_contents)
 
+    def _write_python_version(self):
+        """Writes the python version that the package was created with to .data/python_version"""
+        self._write(".data/python_version", platform.python_version())
+
     def close(self):
         """Write the package to the filesystem. Any calls after :meth:`close` are now invalid.
         It is preferable to use resource guard syntax instead::
@@ -1037,6 +1082,7 @@ class PackageExporter:
                 ...
         """
         self._execute_dependency_graph()
+        self._write_python_version()
 
         self.script_module_serializer.write_files()
         self._finalize_zip()

@@ -1,25 +1,25 @@
-ir_version: 4
+ir_version: 8
 producer_name: "pytorch"
 producer_version: "CURRENT_VERSION"
 graph {
   node {
-    output: "onnx::Where_1"
-    name: "Constant_0"
+    output: "onnx::ConstantOfShape_11"
+    name: "Constant_4"
     op_type: "Constant"
     attribute {
       name: "value"
       t {
-        dims: 3
+        dims: 1
         data_type: 7
-        raw_data: "\004\000\000\000\000\000\000\000\006\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000"
+        raw_data: "\003\000\000\000\000\000\000\000"
       }
       type: TENSOR
     }
   }
   node {
-    input: "onnx::ConstantOfShape_10"
+    input: "onnx::ConstantOfShape_11"
     output: "onnx::Mul_3"
-    name: "ConstantOfShape_1"
+    name: "ConstantOfShape_5"
     op_type: "ConstantOfShape"
     attribute {
       name: "value"
@@ -33,7 +33,7 @@ graph {
   }
   node {
     output: "onnx::Mul_4"
-    name: "Constant_2"
+    name: "Constant_6"
     op_type: "Constant"
     attribute {
       name: "value"
@@ -48,12 +48,12 @@ graph {
     input: "onnx::Mul_3"
     input: "onnx::Mul_4"
     output: "onnx::Equal_5"
-    name: "Mul_3"
+    name: "Mul_7"
     op_type: "Mul"
   }
   node {
     output: "onnx::Equal_6"
-    name: "Constant_4"
+    name: "Constant_8"
     op_type: "Constant"
     attribute {
       name: "value"
@@ -69,31 +69,39 @@ graph {
     input: "onnx::Equal_6"
     input: "onnx::Equal_5"
     output: "onnx::Where_7"
-    name: "Equal_5"
+    name: "Equal_9"
     op_type: "Equal"
+  }
+  node {
+    output: "onnx::Where_8"
+    name: "Constant_10"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 3
+        data_type: 7
+        raw_data: "\004\000\000\000\000\000\000\000\006\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000"
+      }
+      type: TENSOR
+    }
   }
   node {
     input: "onnx::Where_7"
     input: "onnx::Mul_3"
-    input: "onnx::Where_1"
-    output: "onnx::Expand_8"
-    name: "Where_6"
+    input: "onnx::Where_8"
+    output: "onnx::Expand_9"
+    name: "Where_11"
     op_type: "Where"
   }
   node {
     input: "onnx::Expand_0"
-    input: "onnx::Expand_8"
-    output: "9"
-    name: "Expand_7"
+    input: "onnx::Expand_9"
+    output: "10"
+    name: "Expand_12"
     op_type: "Expand"
   }
-  name: "torch_jit"
-  initializer {
-    dims: 1
-    data_type: 7
-    name: "onnx::ConstantOfShape_10"
-    raw_data: "\003\000\000\000\000\000\000\000"
-  }
+  name: "main_graph"
   input {
     name: "onnx::Expand_0"
     type {
@@ -111,7 +119,7 @@ graph {
     }
   }
   output {
-    name: "9"
+    name: "10"
     type {
       tensor_type {
         elem_type: 1
@@ -131,5 +139,5 @@ graph {
   }
 }
 opset_import {
-  version: 9
+  version: 17
 }
